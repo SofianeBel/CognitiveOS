@@ -4,6 +4,7 @@ from sentence_transformers import SentenceTransformer
 from typing import List, Union, Optional
 import numpy as np
 import logging
+import threading
 
 from src.config import settings
 
@@ -15,6 +16,9 @@ class EmbeddingService:
 
     _instance: Optional["EmbeddingService"] = None
     _model: Optional[SentenceTransformer] = None
+    _loading: bool = False
+    _load_lock: threading.Lock = threading.Lock()
+    _ready_event: threading.Event = threading.Event()
 
     def __new__(cls) -> "EmbeddingService":
         if cls._instance is None:
@@ -23,13 +27,60 @@ class EmbeddingService:
 
     @property
     def model(self) -> SentenceTransformer:
-        """Lazy-load the embedding model."""
-        if self._model is None:
-            model_name = settings().embedding_model
-            logger.info(f"Loading embedding model: {model_name}")
-            self._model = SentenceTransformer(model_name)
-            logger.info(f"Model loaded. Embedding dimension: {self._model.get_sentence_embedding_dimension()}")
+        """Lazy-load the embedding model, waiting for background load if in progress."""
+        if self._model is not None:
+            return self._model
+
+        # Wait for background loading if in progress
+        if self._loading:
+            logger.debug("Waiting for background model loading...")
+            self._ready_event.wait()
+            return self._model
+
+        # Load synchronously if not already loading
+        with self._load_lock:
+            if self._model is None:
+                self._load_model()
         return self._model
+
+    def _load_model(self) -> None:
+        """Internal method to load the model."""
+        model_name = settings().embedding_model
+        logger.info(f"Loading embedding model: {model_name}")
+        self._model = SentenceTransformer(model_name)
+        logger.info(f"Model loaded. Embedding dimension: {self._model.get_sentence_embedding_dimension()}")
+        self._ready_event.set()
+
+    def warmup(self) -> None:
+        """
+        Pre-load the embedding model in the background.
+
+        Call this at application startup to avoid cold start latency.
+        """
+        if self._model is not None or self._loading:
+            return
+
+        with self._load_lock:
+            if self._model is not None or self._loading:
+                return
+            self._loading = True
+
+        def _background_load():
+            try:
+                self._load_model()
+                logger.info("Embedding model warmed up in background")
+            except Exception as e:
+                logger.error(f"Background model loading failed: {e}")
+            finally:
+                self._loading = False
+
+        thread = threading.Thread(target=_background_load, daemon=True)
+        thread.start()
+        logger.info("Started background embedding model warmup")
+
+    def is_ready(self) -> bool:
+        """Check if the model is loaded and ready."""
+        return self._model is not None
 
     @property
     def dimension(self) -> int:

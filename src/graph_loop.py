@@ -4,12 +4,12 @@ from typing import TypedDict, Annotated, List, Optional
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
-from langchain_openai import ChatOpenAI
 import logging
 
 from src.config import settings
 from src.memory.graph import MemoryGraph
 from src.agents.extractor import ExtractionAgent
+from src.agents.llm_factory import LLMFactory
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +41,13 @@ class CognitiveLoop:
         """
         self.memory = MemoryGraph(filepath=memory_path)
         self.extractor = ExtractionAgent()
-        self.llm = ChatOpenAI(
-            model="gpt-4o",
-            api_key=settings().openai_api_key,
-            temperature=0.7
-        )
+        self.llm = LLMFactory.create_chat_llm(temperature=0.7)
         self.graph = self._build_graph()
-        logger.info("CognitiveLoop initialized")
+
+        config = settings()
+        logger.info(
+            f"CognitiveLoop initialized (provider={config.llm_provider})"
+        )
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph conversation loop."""

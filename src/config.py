@@ -9,7 +9,21 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # OpenAI Configuration
-    openai_api_key: str = Field(..., validation_alias="OPENAI_API_KEY")
+    openai_api_key: Optional[str] = Field(None, validation_alias="OPENAI_API_KEY")
+
+    # LLM Provider (Phase 3)
+    llm_provider: Literal["openai", "ollama"] = Field(
+        default="openai",
+        validation_alias="LLM_PROVIDER"
+    )
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        validation_alias="OLLAMA_BASE_URL"
+    )
+    ollama_model: str = Field(
+        default="llama3.2",
+        validation_alias="OLLAMA_MODEL"
+    )
 
     # Embedding Model
     embedding_model: str = Field(
@@ -57,6 +71,24 @@ class Settings(BaseSettings):
     streamlit_port: int = Field(
         default=8501,
         validation_alias="STREAMLIT_PORT"
+    )
+
+    # Consolidation Settings (Phase 3)
+    consolidation_enabled: bool = Field(
+        default=True,
+        validation_alias="CONSOLIDATION_ENABLED"
+    )
+    duplicate_merge_threshold: float = Field(
+        default=0.9,
+        validation_alias="DUPLICATE_MERGE_THRESHOLD"
+    )
+    prune_inactive_days: int = Field(
+        default=30,
+        validation_alias="PRUNE_INACTIVE_DAYS"
+    )
+    prune_importance_threshold: float = Field(
+        default=0.3,
+        validation_alias="PRUNE_IMPORTANCE_THRESHOLD"
     )
 
     model_config = {

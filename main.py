@@ -16,6 +16,9 @@ from rich.logging import RichHandler
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.graph_loop import CognitiveLoop
+from src.consolidation.engine import ConsolidationEngine
+from src.agents.llm_factory import LLMFactory
+from src.memory.embeddings import embedding_service
 
 # Setup logging
 logging.basicConfig(
@@ -60,10 +63,12 @@ def print_help() -> None:
     help_text = """
 [bold]Available Commands:[/bold]
 
-  [cyan]stats[/cyan]    - Show memory statistics
-  [cyan]clear[/cyan]    - Clear the screen
-  [cyan]help[/cyan]     - Show this help message
-  [cyan]quit[/cyan]     - Exit the program
+  [cyan]stats[/cyan]       - Show memory statistics
+  [cyan]consolidate[/cyan] - Run memory consolidation (detect duplicates, prune inactive)
+  [cyan]provider[/cyan]    - Show current LLM provider info
+  [cyan]clear[/cyan]       - Clear the screen
+  [cyan]help[/cyan]        - Show this help message
+  [cyan]quit[/cyan]        - Exit the program
 
 [bold]Tips:[/bold]
 - Share facts about yourself and the system will remember them
@@ -73,8 +78,77 @@ def print_help() -> None:
     console.print(Panel(help_text, title="Help", border_style="blue"))
 
 
+def run_consolidation(cognitive: CognitiveLoop) -> None:
+    """Run memory consolidation."""
+    console.print("[dim]Running memory consolidation...[/dim]\n")
+
+    engine = ConsolidationEngine(cognitive.memory)
+
+    # First show what would be consolidated (dry run)
+    result = engine.run_full_consolidation(dry_run=True)
+
+    if not result.duplicates_merged and not result.nodes_pruned:
+        console.print("[green]Memory is already optimized. Nothing to consolidate.[/green]")
+        return
+
+    # Show preview
+    console.print("[bold]Preview of changes:[/bold]\n")
+
+    if result.duplicates_merged:
+        console.print(f"  [cyan]Duplicates to merge:[/cyan] {len(result.duplicates_merged)}")
+        for merge in result.duplicates_merged[:5]:
+            console.print(f"    • {', '.join(merge.merged_names)} → {merge.primary_name}")
+        if len(result.duplicates_merged) > 5:
+            console.print(f"    ... and {len(result.duplicates_merged) - 5} more")
+
+    if result.contradictions_found:
+        console.print(f"\n  [yellow]Contradictions found:[/yellow] {len(result.contradictions_found)}")
+        for c in result.contradictions_found[:3]:
+            console.print(f"    ⚠ {c.source_name} --{c.relations}--> {c.target_name}")
+
+    if result.nodes_pruned:
+        console.print(f"\n  [red]Nodes to prune:[/red] {len(result.nodes_pruned)}")
+        for name in result.nodes_pruned[:5]:
+            console.print(f"    ✗ {name}")
+        if len(result.nodes_pruned) > 5:
+            console.print(f"    ... and {len(result.nodes_pruned) - 5} more")
+
+    # Ask for confirmation
+    console.print("\n")
+    confirm = console.input("[bold]Apply these changes? (y/n):[/bold] ").strip().lower()
+
+    if confirm == 'y':
+        result = engine.run_full_consolidation(dry_run=False)
+        console.print(f"\n[green]Consolidation complete![/green]")
+        console.print(f"  Nodes: {result.total_nodes_before} → {result.total_nodes_after}")
+        console.print(f"  Edges: {result.total_edges_before} → {result.total_edges_after}")
+    else:
+        console.print("[dim]Consolidation cancelled.[/dim]")
+
+
+def show_provider_info() -> None:
+    """Show current LLM provider information."""
+    info = LLMFactory.get_provider_info()
+
+    table = Table(title="LLM Provider")
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value", style="green")
+
+    table.add_row("Provider", info["provider"].upper())
+    table.add_row("Model", info["model"])
+    table.add_row("Available", "Yes" if info["available"] else "No")
+
+    if "base_url" in info:
+        table.add_row("Base URL", info["base_url"])
+
+    console.print(table)
+
+
 def main() -> None:
     """Main entry point for CognitiveOS."""
+    # Start warming up embedding model in background immediately
+    embedding_service.warmup()
+
     console.print(Panel.fit(
         "[bold blue]CognitiveOS[/bold blue] - Local Memory System\n\n"
         "I remember everything you tell me across conversations.\n"
@@ -123,6 +197,14 @@ def main() -> None:
 
             if cmd == 'clear':
                 console.clear()
+                continue
+
+            if cmd == 'consolidate':
+                run_consolidation(cognitive)
+                continue
+
+            if cmd == 'provider':
+                show_provider_info()
                 continue
 
             # Regular chat

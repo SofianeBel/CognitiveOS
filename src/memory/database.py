@@ -39,7 +39,7 @@ class SQLiteMemoryStore:
     """
 
     # Schema version for future migrations
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, db_path: Optional[str] = None):
         """
@@ -121,7 +121,9 @@ class SQLiteMemoryStore:
                     access_count INTEGER DEFAULT 1,
                     importance_score REAL DEFAULT 0.5,
                     confidence REAL DEFAULT 1.0,
-                    source TEXT DEFAULT 'conversation'
+                    source TEXT DEFAULT 'conversation',
+                    deleted_at TEXT DEFAULT NULL,
+                    merged_into_id TEXT DEFAULT NULL
                 )
             """)
 
@@ -151,6 +153,22 @@ class SQLiteMemoryStore:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation)")
 
+            # Create audit_log table for operation history
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                    operation TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    entity_name TEXT,
+                    changes TEXT,
+                    reason TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
+
             # Create sqlite-vec virtual table if available
             if self._vec_available:
                 try:
@@ -172,11 +190,37 @@ class SQLiteMemoryStore:
                     logger.warning(f"Could not create vec_nodes table: {e}")
                     self._vec_available = False
 
+            # Check existing version and migrate if needed
+            cursor.execute("SELECT version FROM schema_version LIMIT 1")
+            row = cursor.fetchone()
+            current_version = row[0] if row else 0
+
+            if current_version < 2:
+                self._migrate_to_v2(cursor)
+
             # Set schema version
             cursor.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
                           (self.SCHEMA_VERSION,))
 
             conn.commit()
+
+    def _migrate_to_v2(self, cursor) -> None:
+        """Migrate schema from v1 to v2 (add soft-delete + audit log)."""
+        logger.info("Migrating database schema to v2...")
+
+        # Check if deleted_at column exists
+        cursor.execute("PRAGMA table_info(nodes)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'deleted_at' not in columns:
+            cursor.execute("ALTER TABLE nodes ADD COLUMN deleted_at TEXT DEFAULT NULL")
+            logger.info("Added deleted_at column to nodes")
+
+        if 'merged_into_id' not in columns:
+            cursor.execute("ALTER TABLE nodes ADD COLUMN merged_into_id TEXT DEFAULT NULL")
+            logger.info("Added merged_into_id column to nodes")
+
+        logger.info("Database schema migration to v2 complete")
 
     def add_node(self, node: Node, check_duplicate: bool = True) -> Node:
         """
@@ -304,10 +348,10 @@ class SQLiteMemoryStore:
         return edge
 
     def get_node(self, node_id: str) -> Optional[Node]:
-        """Get a node by ID."""
+        """Get a node by ID (excludes soft-deleted nodes)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM nodes WHERE id = ?", (node_id,))
+            cursor.execute("SELECT * FROM nodes WHERE id = ? AND deleted_at IS NULL", (node_id,))
             row = cursor.fetchone()
 
             if not row:
@@ -316,11 +360,11 @@ class SQLiteMemoryStore:
             return self._row_to_node(row)
 
     def get_node_by_name(self, name: str) -> Optional[Node]:
-        """Get a node by name (case-insensitive)."""
+        """Get a node by name (case-insensitive, excludes soft-deleted)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM nodes WHERE LOWER(name) = LOWER(?)",
+                "SELECT * FROM nodes WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL",
                 (name,)
             )
             row = cursor.fetchone()
@@ -331,10 +375,10 @@ class SQLiteMemoryStore:
             return self._row_to_node(row)
 
     def get_all_nodes(self) -> List[Node]:
-        """Get all nodes from the database."""
+        """Get all active nodes from the database (excludes soft-deleted)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM nodes ORDER BY name")
+            cursor.execute("SELECT * FROM nodes WHERE deleted_at IS NULL ORDER BY name")
             return [self._row_to_node(row) for row in cursor.fetchall()]
 
     def get_all_edges(self) -> List[Edge]:
@@ -550,17 +594,17 @@ class SQLiteMemoryStore:
             return {'outgoing': outgoing, 'incoming': incoming}
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get database statistics."""
+        """Get database statistics (excludes soft-deleted nodes)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
-            cursor.execute("SELECT COUNT(*) FROM nodes")
+            cursor.execute("SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL")
             total_nodes = cursor.fetchone()[0]
 
             cursor.execute("SELECT COUNT(*) FROM edges WHERE is_active = 1")
             total_edges = cursor.fetchone()[0]
 
-            cursor.execute("SELECT label, COUNT(*) as count FROM nodes GROUP BY label")
+            cursor.execute("SELECT label, COUNT(*) as count FROM nodes WHERE deleted_at IS NULL GROUP BY label")
             node_types = {row['label']: row['count'] for row in cursor.fetchall()}
 
             cursor.execute("""
@@ -607,6 +651,16 @@ class SQLiteMemoryStore:
         if row['embedding']:
             embedding = deserialize_float32(row['embedding'])
 
+        # Handle soft-delete fields (may not exist in older schemas)
+        deleted_at = None
+        merged_into_id = None
+        try:
+            if row['deleted_at']:
+                deleted_at = datetime.fromisoformat(row['deleted_at'])
+            merged_into_id = row['merged_into_id']
+        except (KeyError, IndexError):
+            pass
+
         return Node(
             id=row['id'],
             label=row['label'],
@@ -620,7 +674,9 @@ class SQLiteMemoryStore:
                 importance_score=row['importance_score'] or 0.5,
                 confidence=row['confidence'] or 1.0,
                 source=row['source'] or 'conversation'
-            )
+            ),
+            deleted_at=deleted_at,
+            merged_into_id=merged_into_id
         )
 
     def _row_to_edge(self, row: sqlite3.Row) -> Edge:
@@ -661,6 +717,107 @@ class SQLiteMemoryStore:
                     pass
             conn.commit()
         logger.info("Database cleared")
+
+    def soft_delete_node(self, node_id: str, merged_into: Optional[str] = None) -> None:
+        """
+        Soft-delete a node instead of removing it.
+
+        Args:
+            node_id: ID of the node to soft-delete
+            merged_into: Optional ID of the node this was merged into
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE nodes
+                SET deleted_at = datetime('now'),
+                    merged_into_id = ?
+                WHERE id = ?
+            """, (merged_into, node_id))
+            conn.commit()
+        logger.debug(f"Soft-deleted node {node_id}" + (f" (merged into {merged_into})" if merged_into else ""))
+
+    def log_audit(
+        self,
+        operation: str,
+        entity_type: str,
+        entity_id: str,
+        entity_name: Optional[str] = None,
+        changes: Optional[dict] = None,
+        reason: Optional[str] = None
+    ) -> None:
+        """
+        Log an operation to the audit trail.
+
+        Args:
+            operation: Type of operation ('create', 'update', 'delete', 'merge')
+            entity_type: Type of entity ('node', 'edge')
+            entity_id: ID of the entity
+            entity_name: Human-readable name of the entity
+            changes: Dict of what changed (will be stored as JSON)
+            reason: Why the change was made
+        """
+        import json
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO audit_log (operation, entity_type, entity_id, entity_name, changes, reason)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                operation,
+                entity_type,
+                entity_id,
+                entity_name,
+                json.dumps(changes) if changes else None,
+                reason
+            ))
+            conn.commit()
+        logger.debug(f"Audit log: {operation} {entity_type} {entity_id}")
+
+    def get_audit_history(self, entity_id: str) -> List[dict]:
+        """
+        Get audit history for an entity.
+
+        Args:
+            entity_id: ID of the entity to get history for
+
+        Returns:
+            List of audit log entries, most recent first
+        """
+        import json
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM audit_log
+                WHERE entity_id = ?
+                ORDER BY timestamp DESC
+            """, (entity_id,))
+
+            results = []
+            for row in cursor.fetchall():
+                r = dict(row)
+                if r.get('changes'):
+                    r['changes'] = json.loads(r['changes'])
+                results.append(r)
+            return results
+
+    def get_merged_nodes(self, primary_id: str) -> List[Node]:
+        """
+        Get nodes that were merged into a primary node.
+
+        Args:
+            primary_id: ID of the primary (survivor) node
+
+        Returns:
+            List of nodes that were merged into the primary
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM nodes
+                WHERE merged_into_id = ? AND deleted_at IS NOT NULL
+            """, (primary_id,))
+            return [self._row_to_node(row) for row in cursor.fetchall()]
 
     def close(self) -> None:
         """Close database connection."""

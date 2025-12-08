@@ -1,6 +1,5 @@
 """Entity extraction agent using LLM."""
 
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -8,6 +7,7 @@ import logging
 
 from src.config import settings
 from src.memory.models import Node, Edge, ExtractionResult
+from src.agents.llm_factory import LLMFactory
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ Your job is to analyze user messages and extract:
 
 ## Rules
 1. Only extract facts that are explicitly stated or strongly implied
-2. The "User" entity always exists - extract relationships TO the user
+2. ALWAYS include "User" as an entity when the user expresses preferences, relationships, or facts about themselves
 3. Use past tense for historical facts, present for current state
 4. Include confidence scores (0.0-1.0) based on how certain you are
 5. Skip greetings, small talk, and non-factual content
@@ -112,11 +112,14 @@ class ExtractionAgent:
 
     def __init__(self):
         """Initialize the extraction agent with LLM."""
-        self.llm = ChatOpenAI(
-            model="gpt-4o",
-            api_key=settings().openai_api_key,
-            temperature=0
-        ).with_structured_output(EntityExtraction, method="function_calling")
+        # Get base LLM from factory
+        base_llm = LLMFactory.create_extraction_llm()
+
+        # Get the appropriate structured output method
+        method = LLMFactory.get_structured_output_method()
+
+        # Create structured output LLM
+        self.llm = base_llm.with_structured_output(EntityExtraction, method=method)
 
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", EXTRACTION_SYSTEM_PROMPT),
@@ -124,7 +127,11 @@ class ExtractionAgent:
         ])
 
         self.chain = self.prompt | self.llm
-        logger.info("ExtractionAgent initialized")
+
+        config = settings()
+        logger.info(
+            f"ExtractionAgent initialized (provider={config.llm_provider})"
+        )
 
     def extract(self, user_message: str) -> ExtractionResult:
         """
@@ -151,6 +158,32 @@ class ExtractionAgent:
 
             # Build ID mapping for relations (name -> id)
             name_to_id = {e.name: e.id for e in entities}
+
+            # Collect all entity names referenced in relations
+            referenced_names = set()
+            for rel in result.relations:
+                referenced_names.add(rel.source)
+                referenced_names.add(rel.target)
+
+            # Auto-create missing entities (especially "User")
+            for name in referenced_names:
+                if name not in name_to_id:
+                    if name == "User":
+                        node = Node(
+                            label="Person",
+                            name="User",
+                            description="The user of this system"
+                        )
+                    else:
+                        # Create generic entity for other missing references
+                        node = Node(
+                            label="Concept",
+                            name=name,
+                            description=f"Entity referenced in relation"
+                        )
+                    entities.append(node)
+                    name_to_id[name] = node.id
+                    logger.info(f"Auto-created missing entity: {name} ({node.label})")
 
             # Convert ExtractedRelation to Edge models
             relations = []

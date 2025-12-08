@@ -53,6 +53,9 @@ class Node(BaseModel):
     description: Optional[str] = None
     embedding: Optional[List[float]] = None
     metadata: NodeMetadata = Field(default_factory=NodeMetadata)
+    # Soft-delete fields for temporal versioning
+    deleted_at: Optional[datetime] = None
+    merged_into_id: Optional[str] = None
 
     model_config = {"extra": "ignore"}
 
@@ -118,3 +121,57 @@ class ExtractionResult(BaseModel):
             target_name = name_map.get(rel.target, rel.target)
             summaries.append(f"{source_name} --{rel.relation}--> {target_name}")
         return summaries
+
+
+# Phase 3: Consolidation Models
+
+class MergeResult(BaseModel):
+    """Result of merging duplicate nodes."""
+    primary_id: str
+    primary_name: str
+    merged_ids: List[str]
+    merged_names: List[str]
+    similarity: float
+
+    model_config = {"extra": "ignore"}
+
+
+class Contradiction(BaseModel):
+    """Detected contradiction between edges."""
+    source_id: str
+    source_name: str
+    target_id: str
+    target_name: str
+    relations: List[str]
+    resolution: str = "flagged"  # "kept_recent", "flagged", "user_decision"
+
+    model_config = {"extra": "ignore"}
+
+
+class ConsolidationResult(BaseModel):
+    """Result of a consolidation run."""
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    duplicates_merged: List[MergeResult] = Field(default_factory=list)
+    contradictions_found: List[Contradiction] = Field(default_factory=list)
+    nodes_pruned: List[str] = Field(default_factory=list)
+    total_nodes_before: int = 0
+    total_nodes_after: int = 0
+    total_edges_before: int = 0
+    total_edges_after: int = 0
+    dry_run: bool = False
+
+    model_config = {"extra": "ignore"}
+
+    @property
+    def summary(self) -> str:
+        """Get a human-readable summary of the consolidation."""
+        lines = [
+            f"Consolidation {'(DRY RUN) ' if self.dry_run else ''}completed:",
+            f"  - Duplicates merged: {len(self.duplicates_merged)}",
+            f"  - Contradictions found: {len(self.contradictions_found)}",
+            f"  - Nodes pruned: {len(self.nodes_pruned)}",
+            f"  - Nodes: {self.total_nodes_before} -> {self.total_nodes_after}",
+            f"  - Edges: {self.total_edges_before} -> {self.total_edges_after}"
+        ]
+        return "\n".join(lines)

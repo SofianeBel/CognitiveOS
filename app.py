@@ -9,6 +9,9 @@ from src.config import settings
 from src.memory.graph import MemoryGraph
 from src.graph_loop import CognitiveLoop
 from src.ui.graph_viz import render_memory_graph, get_entity_type_colors, create_legend_html
+from src.consolidation.engine import ConsolidationEngine
+from src.agents.llm_factory import LLMFactory
+from src.memory.embeddings import embedding_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +55,11 @@ st.markdown("""
 
 def init_session_state():
     """Initialize session state variables."""
+    # Start warming up embedding model in background immediately
+    if "warmup_started" not in st.session_state:
+        embedding_service.warmup()
+        st.session_state.warmup_started = True
+
     if "cognitive_loop" not in st.session_state:
         st.session_state.cognitive_loop = CognitiveLoop()
 
@@ -224,8 +232,8 @@ def render_stats_panel():
             st.metric("Storage", backend.upper())
 
         with col4:
-            vec_available = stats.get("vec_available", False)
-            st.metric("Vector Search", "sqlite-vec" if vec_available else "numpy")
+            provider_info = LLMFactory.get_provider_info()
+            st.metric("LLM Provider", provider_info["provider"].upper())
 
         # Node types breakdown
         if stats.get("node_types"):
@@ -246,6 +254,119 @@ def render_stats_panel():
                 )
 
 
+def render_consolidation_panel():
+    """Render the memory consolidation panel."""
+    with st.expander("🧹 Memory Consolidation", expanded=False):
+        st.write("Optimize your memory graph by merging duplicates and removing stale memories.")
+
+        stats = st.session_state.memory.get_stats()
+
+        if stats["total_nodes"] == 0:
+            st.info("No memories to consolidate yet.")
+            return
+
+        # Get consolidation candidates
+        engine = ConsolidationEngine(st.session_state.memory)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            duplicate_threshold = st.slider(
+                "Duplicate Similarity Threshold",
+                min_value=0.7,
+                max_value=0.99,
+                value=settings().duplicate_merge_threshold,
+                step=0.01,
+                help="Nodes with similarity above this will be merged"
+            )
+
+        with col2:
+            prune_days = st.slider(
+                "Prune After (days inactive)",
+                min_value=7,
+                max_value=90,
+                value=settings().prune_inactive_days,
+                step=1,
+                help="Prune nodes inactive for longer than this"
+            )
+
+        # Preview button
+        if st.button("Preview Changes", use_container_width=True):
+            with st.spinner("Analyzing memory..."):
+                result = engine.run_full_consolidation(
+                    dry_run=True,
+                    merge_threshold=duplicate_threshold,
+                    prune_days=prune_days
+                )
+
+                st.session_state.consolidation_preview = result
+
+        # Show preview if available
+        if "consolidation_preview" in st.session_state:
+            result = st.session_state.consolidation_preview
+
+            st.subheader("Preview Results")
+
+            # Duplicates
+            if result.duplicates_merged:
+                st.write(f"**Duplicates to merge:** {len(result.duplicates_merged)}")
+                for merge in result.duplicates_merged[:5]:
+                    st.write(f"- {', '.join(merge.merged_names)} → **{merge.primary_name}** (similarity: {merge.similarity:.2f})")
+                if len(result.duplicates_merged) > 5:
+                    st.write(f"*...and {len(result.duplicates_merged) - 5} more*")
+            else:
+                st.write("*No duplicates found*")
+
+            # Contradictions
+            if result.contradictions_found:
+                st.warning(f"**Contradictions found:** {len(result.contradictions_found)}")
+                for c in result.contradictions_found[:3]:
+                    st.write(f"- {c.source_name} ↔ {c.target_name}: {c.relations}")
+            else:
+                st.write("*No contradictions found*")
+
+            # Prune candidates
+            if result.nodes_pruned:
+                st.write(f"**Nodes to prune:** {len(result.nodes_pruned)}")
+                for name in result.nodes_pruned[:5]:
+                    st.write(f"- ~~{name}~~")
+                if len(result.nodes_pruned) > 5:
+                    st.write(f"*...and {len(result.nodes_pruned) - 5} more*")
+            else:
+                st.write("*No nodes to prune*")
+
+            # Apply button
+            st.divider()
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("Apply Changes", type="primary", use_container_width=True):
+                    with st.spinner("Consolidating memory..."):
+                        final_result = engine.run_full_consolidation(
+                            dry_run=False,
+                            merge_threshold=duplicate_threshold,
+                            prune_days=prune_days
+                        )
+
+                        # Update memory reference
+                        st.session_state.memory = st.session_state.cognitive_loop.memory
+
+                        # Clear preview
+                        del st.session_state.consolidation_preview
+
+                        st.success(
+                            f"Consolidation complete!\n"
+                            f"Nodes: {final_result.total_nodes_before} → {final_result.total_nodes_after}\n"
+                            f"Edges: {final_result.total_edges_before} → {final_result.total_edges_after}"
+                        )
+                        st.rerun()
+
+            with col2:
+                if st.button("Cancel", use_container_width=True):
+                    del st.session_state.consolidation_preview
+                    st.rerun()
+
+
 def main():
     """Main application entry point."""
     # Initialize session state
@@ -259,6 +380,9 @@ def main():
 
     # Stats panel at the bottom
     render_stats_panel()
+
+    # Consolidation panel
+    render_consolidation_panel()
 
     # Footer
     st.divider()
