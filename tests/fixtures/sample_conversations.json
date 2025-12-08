@@ -1,0 +1,101 @@
+{
+  "conversations": [
+    {
+      "id": 1,
+      "description": "User introduces themselves",
+      "messages": [
+        "Hi! My name is Sifly and I'm a software developer."
+      ],
+      "expected_entities": ["Sifly", "software developer"],
+      "expected_relations": ["WORKS_AS"]
+    },
+    {
+      "id": 2,
+      "description": "User shares preferences",
+      "messages": [
+        "I absolutely love pizza, especially with mushrooms.",
+        "I also enjoy hiking on weekends."
+      ],
+      "expected_entities": ["Pizza", "mushrooms", "hiking"],
+      "expected_relations": ["LIKES"]
+    },
+    {
+      "id": 3,
+      "description": "User mentions friends and work",
+      "messages": [
+        "My friend Alice works at Google.",
+        "We met at Stanford back in 2018."
+      ],
+      "expected_entities": ["Alice", "Google", "Stanford"],
+      "expected_relations": ["KNOWS", "WORKS_AT", "STUDIED_AT"]
+    },
+    {
+      "id": 4,
+      "description": "User shares skills",
+      "messages": [
+        "I've been learning Python for 3 years now.",
+        "Recently started exploring machine learning too."
+      ],
+      "expected_entities": ["Python", "machine learning"],
+      "expected_relations": ["LEARNED", "LEARNING"]
+    },
+    {
+      "id": 5,
+      "description": "User shares location",
+      "messages": [
+        "I live in Paris, France.",
+        "But I grew up in Lyon."
+      ],
+      "expected_entities": ["Paris", "Lyon", "France"],
+      "expected_relations": ["LIVES_IN", "GREW_UP_IN"]
+    },
+    {
+      "id": 6,
+      "description": "Small talk (no facts)",
+      "messages": [
+        "Hello! How are you today?",
+        "Nice weather, isn't it?"
+      ],
+      "expected_entities": [],
+      "expected_relations": []
+    },
+    {
+      "id": 7,
+      "description": "User shares project",
+      "messages": [
+        "I'm building a memory system for AI called CognitiveOS."
+      ],
+      "expected_entities": ["CognitiveOS"],
+      "expected_relations": ["CREATED", "WORKING_ON"]
+    },
+    {
+      "id": 8,
+      "description": "User shares dislikes",
+      "messages": [
+        "I really don't like cold weather.",
+        "And I can't stand olives on pizza."
+      ],
+      "expected_entities": ["cold weather", "olives"],
+      "expected_relations": ["DISLIKES"]
+    },
+    {
+      "id": 9,
+      "description": "Family relationships",
+      "messages": [
+        "My sister Marie is a doctor.",
+        "She lives in Marseille with her husband."
+      ],
+      "expected_entities": ["Marie", "Marseille"],
+      "expected_relations": ["KNOWS", "LIVES_IN"]
+    },
+    {
+      "id": 10,
+      "description": "Complex multi-fact message",
+      "messages": [
+        "I just got promoted at my company! My colleague Bob helped me prepare for the interview. We're celebrating at our favorite Italian restaurant tonight."
+      ],
+      "expected_entities": ["Bob", "Italian restaurant"],
+      "expected_relations": ["KNOWS", "WORKS_WITH", "LIKES"]
+    }
+  ]
+}
