@@ -7,7 +7,7 @@ import logging
 
 from src.config import settings
 from src.memory.graph import MemoryGraph
-from src.graph_loop import create_cognitive_loop
+from src.graph_loop import CognitiveLoop
 from src.ui.graph_viz import render_memory_graph, get_entity_type_colors, create_legend_html
 
 # Configure logging
@@ -52,14 +52,15 @@ st.markdown("""
 
 def init_session_state():
     """Initialize session state variables."""
+    if "cognitive_loop" not in st.session_state:
+        st.session_state.cognitive_loop = CognitiveLoop()
+
     if "memory" not in st.session_state:
-        st.session_state.memory = MemoryGraph()
+        # Use the memory from the cognitive loop
+        st.session_state.memory = st.session_state.cognitive_loop.memory
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
-
-    if "cognitive_loop" not in st.session_state:
-        st.session_state.cognitive_loop = create_cognitive_loop()
 
     if "graph_filter" not in st.session_state:
         st.session_state.graph_filter = None
@@ -191,24 +192,14 @@ def process_message(user_message: str) -> str:
     try:
         # Run through cognitive loop
         loop = st.session_state.cognitive_loop
-        memory = st.session_state.memory
 
-        # Initial state
-        state = {
-            "user_message": user_message,
-            "memory": memory,
-            "context": "",
-            "response": "",
-            "extraction": None
-        }
+        # Use the chat method from CognitiveLoop
+        response = loop.chat(user_message)
 
-        # Execute the loop
-        final_state = loop.invoke(state)
+        # Update memory reference in session state
+        st.session_state.memory = loop.memory
 
-        # Update memory in session state (should already be updated by reference)
-        st.session_state.memory = final_state["memory"]
-
-        return final_state["response"]
+        return response
 
     except Exception as e:
         logger.error(f"Error processing message: {e}")
