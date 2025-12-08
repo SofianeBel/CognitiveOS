@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-12-08
+
+### Added
+- Memory consolidation engine (`python -m src.consolidation.run`)
+  - Duplicate detection and merging (configurable similarity threshold)
+  - Contradiction detection for conflicting relations (LIKES/DISLIKES, etc.)
+  - Inactive memory pruning (configurable days and importance thresholds)
+  - Dry-run mode for previewing changes
+- Local LLM support via Ollama
+  - LLM Factory pattern for swappable providers (`src/agents/llm_factory.py`)
+  - Support for OpenAI GPT-4o and Ollama (Llama 3.2)
+  - Provider switching via `LLM_PROVIDER` environment variable
+- New CLI commands: `consolidate`, `provider`
+- Consolidation UI in Streamlit app with preview and apply workflow
+- New data models: `MergeResult`, `Contradiction`, `ConsolidationResult`
+
+### Changed
+- Configuration now supports optional `OPENAI_API_KEY` (required only for OpenAI provider)
+- ExtractionAgent and CognitiveLoop now use LLMFactory for provider abstraction
+- Updated requirements.txt with langchain-ollama dependency
+
+### Configuration
+New environment variables:
+- `LLM_PROVIDER`: "openai" or "ollama" (default: "openai")
+- `OLLAMA_BASE_URL`: Ollama server URL (default: http://localhost:11434)
+- `OLLAMA_MODEL`: Ollama model name (default: llama3.2)
+- `CONSOLIDATION_ENABLED`: Enable consolidation (default: true)
+- `DUPLICATE_MERGE_THRESHOLD`: Similarity for duplicate detection (default: 0.9)
+- `PRUNE_INACTIVE_DAYS`: Days before pruning (default: 30)
+- `PRUNE_IMPORTANCE_THRESHOLD`: Max importance to prune (default: 0.3)
+
 ## [0.2.0] - 2025-12-08
 
 ### Added
@@ -42,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Relation Types
 - KNOWS, LIKES, DISLIKES, WORKS_AT, LIVES_IN, OWNS, LEARNED, CREATED, MEMBER_OF, HAS_PROPERTY, RELATED_TO
 
-[Unreleased]: https://github.com/yourusername/CognitiveOS/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/yourusername/CognitiveOS/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/yourusername/CognitiveOS/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yourusername/CognitiveOS/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/yourusername/CognitiveOS/releases/tag/v0.1.0

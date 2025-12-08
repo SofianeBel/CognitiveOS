@@ -14,6 +14,8 @@ CognitiveOS gives your AI assistant infinite memory. It extracts facts from conv
 - **Multiple Interfaces**: Console CLI and Streamlit Web UI
 - **Persistent Storage**: JSON (Phase 1) or SQLite with sqlite-vec (Phase 2)
 - **Interactive Visualization**: PyVis graph with zoom, pan, and click
+- **Memory Consolidation**: Merge duplicates, detect contradictions, prune stale memories (Phase 3)
+- **Local LLM Support**: Offline operation with Ollama + Llama 3.2 (Phase 3)
 
 ## Architecture
 
@@ -25,11 +27,12 @@ User Message → Context Retrieval → LLM Response → Entity Extraction → Me
 
 **Tech Stack:**
 - **Orchestration**: LangGraph
-- **LLM**: OpenAI GPT-4o
+- **LLM**: OpenAI GPT-4o or Ollama (Llama 3.2) - configurable
 - **Storage**: NetworkX + JSON (Phase 1), SQLite + sqlite-vec (Phase 2)
 - **Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
 - **CLI**: Rich
 - **Web UI**: Streamlit + PyVis (Phase 2)
+- **Consolidation**: Memory optimization engine (Phase 3)
 
 ## Installation
 
@@ -64,11 +67,26 @@ python main.py
 streamlit run app.py
 ```
 
+### Memory Consolidation (Phase 3)
+
+```bash
+# Preview consolidation changes
+python -m src.consolidation.run --dry-run
+
+# Run consolidation with custom thresholds
+python -m src.consolidation.run --duplicate-threshold 0.85 --prune-days 60
+
+# Show candidates without applying
+python -m src.consolidation.run --show-candidates
+```
+
 ### Commands (Console)
 
 | Command | Description |
 |---------|-------------|
 | `stats` | Show memory statistics |
+| `consolidate` | Run memory consolidation |
+| `provider` | Show current LLM provider info |
 | `help`  | Show available commands |
 | `clear` | Clear the screen |
 | `quit`  | Exit the program |
@@ -150,8 +168,15 @@ CognitiveOS/
 Set these environment variables in your `.env` file:
 
 ```bash
-# Required
+# Required (for OpenAI provider)
 OPENAI_API_KEY=sk-...
+
+# LLM Provider: "openai" or "ollama" (Phase 3)
+LLM_PROVIDER=openai
+
+# Ollama Configuration (when LLM_PROVIDER=ollama)
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
 
 # Storage backend: "json" (Phase 1) or "sqlite" (Phase 2)
 STORAGE_BACKEND=json
@@ -159,6 +184,25 @@ STORAGE_BACKEND=json
 # Optional
 DATABASE_PATH=data/memory.db
 MEMORY_FILE=data/memory.json
+
+# Consolidation Settings (Phase 3)
+DUPLICATE_MERGE_THRESHOLD=0.9
+PRUNE_INACTIVE_DAYS=30
+PRUNE_IMPORTANCE_THRESHOLD=0.3
+```
+
+### Ollama Setup (for local LLM)
+
+```bash
+# Install Ollama
+# macOS/Linux: curl -fsSL https://ollama.com/install.sh | sh
+# Windows: Download from https://ollama.com/download
+
+# Download Llama 3.2
+ollama pull llama3.2
+
+# Set provider in .env
+LLM_PROVIDER=ollama
 ```
 
 ### Migration from JSON to SQLite
@@ -172,13 +216,15 @@ python -m src.memory.migrate --json data/memory.json --db data/memory.db
 - [x] **Phase 1**: Console prototype with NetworkX
 - [x] **Phase 2**: SQLite + sqlite-vec persistence
 - [x] **Phase 2**: Streamlit UI with PyVis visualization
-- [ ] **Phase 3**: Memory consolidation ("sleep" process)
-- [ ] **Phase 3**: Local LLM support (Ollama + Llama)
+- [x] **Phase 3**: Memory consolidation ("sleep" process)
+- [x] **Phase 3**: Local LLM support (Ollama + Llama)
+- [ ] **Phase 4**: Background scheduled consolidation
+- [ ] **Phase 4**: Multi-user support
 
 ## Requirements
 
 - Python 3.10+
-- OpenAI API key (Phase 1)
+- OpenAI API key (for OpenAI provider) OR Ollama (for local LLM)
 - ~8GB RAM minimum
 
 ## License

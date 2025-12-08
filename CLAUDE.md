@@ -38,8 +38,13 @@ pip install -r requirements.txt
 ### Environment Variables
 
 ```bash
-# Required
+# Required (for OpenAI provider)
 OPENAI_API_KEY=sk-...
+
+# LLM Provider (Phase 3)
+LLM_PROVIDER=openai           # "openai" or "ollama"
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
 
 # Storage (optional)
 STORAGE_BACKEND=json          # "json" or "sqlite"
@@ -50,6 +55,11 @@ DATABASE_PATH=data/memory.db  # SQLite storage path
 RETRIEVAL_TOP_K=10            # Number of context items
 SIMILARITY_THRESHOLD=0.7      # Minimum similarity for retrieval
 DUPLICATE_THRESHOLD=0.85      # Similarity threshold for deduplication
+
+# Consolidation (Phase 3)
+DUPLICATE_MERGE_THRESHOLD=0.9    # Similarity for duplicate detection
+PRUNE_INACTIVE_DAYS=30           # Days before pruning
+PRUNE_IMPORTANCE_THRESHOLD=0.3   # Max importance to prune
 
 # Logging
 LOG_LEVEL=INFO
@@ -98,6 +108,8 @@ The prompt uses double braces `{{}}` to escape JSON examples from LangChain temp
 - `CognitiveLoop` (`src/graph_loop.py`) - LangGraph orchestration
 - `ExtractionAgent` (`src/agents/extractor.py`) - Entity extraction with structured output
 - `EmbeddingService` (`src/memory/embeddings.py`) - Singleton for sentence-transformers
+- `LLMFactory` (`src/agents/llm_factory.py`) - Provider abstraction for OpenAI/Ollama (Phase 3)
+- `ConsolidationEngine` (`src/consolidation/engine.py`) - Memory optimization (Phase 3)
 
 ## Git & Versioning Conventions
 
@@ -208,6 +220,12 @@ Use `temp_memory_file` fixture for isolated file-based tests.
 | streamlit | Web UI framework |
 | pyvis | Interactive graph visualization |
 
+### Phase 3 Libraries
+
+| Library | Purpose |
+|---------|---------|
+| langchain-ollama | Ollama LLM integration |
+
 ### Windows Notes
 
 - sqlite-vec may require manual installation on Windows
@@ -217,8 +235,9 @@ Use `temp_memory_file` fixture for isolated file-based tests.
 
 - **Phase 1** (Complete): Console prototype with NetworkX + JSON
 - **Phase 2** (Complete): SQLite + sqlite-vec persistence, Streamlit UI with PyVis
-- **Phase 3** (Planned): Memory consolidation, Local LLM support (Ollama)
+- **Phase 3** (Complete): Memory consolidation, Local LLM support (Ollama)
+- **Phase 4** (Planned): Background scheduled consolidation, Multi-user support
 
 ## Current Version
 
-v0.2.0 - See CHANGELOG.md for details
+v0.3.0 - See CHANGELOG.md for details

@@ -1,0 +1,83 @@
+site_name: CognitiveOS Documentation
+site_description: Local-first memory system for LLMs - Extract entities, store in knowledge graphs, retrieve context
+site_url: https://sifly.github.io/CognitiveOS/
+repo_url: https://github.com/sifly/CognitiveOS
+repo_name: CognitiveOS
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Configuration: getting-started/configuration.md
+  - User Guide:
+    - CLI Usage: user-guide/cli-usage.md
+    - Web UI: user-guide/web-ui.md
+    - Migration: user-guide/migration.md
+    - Consolidation: user-guide/consolidation.md
+    - Local LLM: user-guide/local-llm.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Knowledge Graph: architecture/knowledge-graph.md
+    - Retrieval: architecture/retrieval.md
+    - Storage: architecture/storage.md
+  - API Reference:
+    - Overview: api/index.md
+    - MemoryGraph: api/memory-graph.md
+    - CognitiveLoop: api/cognitive-loop.md
+    - Models: api/models.md
+  - Troubleshooting: troubleshooting.md
+  - Contributing: contributing.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - admonition
+  - toc:
+      permalink: true
+  - tables
+  - attr_list
+  - md_in_html
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/sifly/CognitiveOS
