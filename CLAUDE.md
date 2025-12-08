@@ -35,7 +35,29 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
-Required environment variable: `OPENAI_API_KEY`
+### Environment Variables
+
+```bash
+# Required
+OPENAI_API_KEY=sk-...
+
+# Storage (optional)
+STORAGE_BACKEND=json          # "json" or "sqlite"
+MEMORY_FILE=data/memory.json  # JSON storage path
+DATABASE_PATH=data/memory.db  # SQLite storage path
+
+# Retrieval tuning (optional)
+RETRIEVAL_TOP_K=10            # Number of context items
+SIMILARITY_THRESHOLD=0.7      # Minimum similarity for retrieval
+DUPLICATE_THRESHOLD=0.85      # Similarity threshold for deduplication
+
+# Logging
+LOG_LEVEL=INFO
+```
+
+## Project Tracker
+
+project_tracker: github
 
 ## Architecture
 
@@ -146,8 +168,57 @@ Example: {{"name": "Alice"}}
 """
 ```
 
+## Testing
+
+### Running Tests
+
+```bash
+# All tests
+pytest tests/ -v
+
+# With coverage
+pytest tests/ -v --cov=src
+
+# Skip slow tests (embedding model loading)
+pytest tests/ -v -m "not slow"
+```
+
+### Test Structure
+
+Tests require `OPENAI_API_KEY` env var (can be a dummy value for unit tests).
+Use `temp_memory_file` fixture for isolated file-based tests.
+
+## Dependencies
+
+### Core Libraries
+
+| Library | Purpose |
+|---------|---------|
+| langgraph | Conversation loop orchestration |
+| langchain-openai | GPT-4o integration |
+| networkx | In-memory graph structure |
+| sentence-transformers | Embedding model (all-MiniLM-L6-v2) |
+| pydantic | Data validation and models |
+
+### Phase 2 Libraries
+
+| Library | Purpose |
+|---------|---------|
+| sqlite-vec | Vector similarity in SQLite |
+| streamlit | Web UI framework |
+| pyvis | Interactive graph visualization |
+
+### Windows Notes
+
+- sqlite-vec may require manual installation on Windows
+- Use `venv\Scripts\activate` (not `source venv/bin/activate`)
+
 ## Project Phases
 
 - **Phase 1** (Complete): Console prototype with NetworkX + JSON
 - **Phase 2** (Complete): SQLite + sqlite-vec persistence, Streamlit UI with PyVis
 - **Phase 3** (Planned): Memory consolidation, Local LLM support (Ollama)
+
+## Current Version
+
+v0.2.0 - See CHANGELOG.md for details
