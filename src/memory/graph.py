@@ -76,11 +76,13 @@ class MemoryGraph:
             for edge_data in data.get('edges', []):
                 edge = Edge(**edge_data)
                 self.edges_data[edge.id] = edge
+                e_data = edge.model_dump()
+                e_data.pop('source', None)
+                e_data.pop('target', None)
                 self.graph.add_edge(
                     edge.source,
                     edge.target,
-                    id=edge.id,
-                    **edge.model_dump()
+                    **e_data
                 )
 
             logger.info(
@@ -105,11 +107,13 @@ class MemoryGraph:
         # Load edges
         for edge in self._sqlite_store.get_all_edges():
             self.edges_data[edge.id] = edge
+            e_data = edge.model_dump()
+            e_data.pop('source', None)
+            e_data.pop('target', None)
             self.graph.add_edge(
                 edge.source,
                 edge.target,
-                id=edge.id,
-                **edge.model_dump()
+                **e_data
             )
 
         logger.info(
@@ -246,11 +250,13 @@ class MemoryGraph:
             result = self._sqlite_store.add_edge(edge)
             # Keep in-memory graph in sync
             self.edges_data[result.id] = result
+            edge_data = result.model_dump()
+            edge_data.pop('source', None)  # Remove source/target as they're positional
+            edge_data.pop('target', None)
             self.graph.add_edge(
                 result.source,
                 result.target,
-                id=result.id,
-                **result.model_dump()
+                **edge_data
             )
             return result
 
@@ -269,11 +275,13 @@ class MemoryGraph:
             edge.embedding = embedding_service.embed(text).tolist()
 
         self.edges_data[edge.id] = edge
+        edge_data = edge.model_dump()
+        edge_data.pop('source', None)  # Remove source/target as they're positional
+        edge_data.pop('target', None)
         self.graph.add_edge(
             edge.source,
             edge.target,
-            id=edge.id,
-            **edge.model_dump()
+            **edge_data
         )
         logger.debug(
             f"Added edge: {self.nodes_data[edge.source].name} "
