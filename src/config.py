@@ -2,7 +2,7 @@
 
 from pydantic_settings import BaseSettings
 from pydantic import Field
-from typing import Optional
+from typing import Optional, Literal
 
 
 class Settings(BaseSettings):
@@ -17,10 +17,20 @@ class Settings(BaseSettings):
         validation_alias="EMBEDDING_MODEL"
     )
 
-    # Storage
+    # Storage - Phase 1 (JSON)
     memory_file: str = Field(
         default="data/memory.json",
         validation_alias="MEMORY_FILE"
+    )
+
+    # Storage - Phase 2 (SQLite)
+    storage_backend: Literal["json", "sqlite"] = Field(
+        default="json",
+        validation_alias="STORAGE_BACKEND"
+    )
+    database_path: str = Field(
+        default="data/memory.db",
+        validation_alias="DATABASE_PATH"
     )
 
     # Retrieval Settings
@@ -41,6 +51,12 @@ class Settings(BaseSettings):
     log_level: str = Field(
         default="INFO",
         validation_alias="LOG_LEVEL"
+    )
+
+    # Streamlit
+    streamlit_port: int = Field(
+        default=8501,
+        validation_alias="STREAMLIT_PORT"
     )
 
     model_config = {

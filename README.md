@@ -11,7 +11,9 @@ CognitiveOS gives your AI assistant infinite memory. It extracts facts from conv
 - **Semantic Search**: Find relevant memories using embeddings
 - **Duplicate Detection**: Prevents graph fragmentation
 - **Local-First**: All data stays on your machine
-- **Console Interface**: Simple CLI for chatting
+- **Multiple Interfaces**: Console CLI and Streamlit Web UI
+- **Persistent Storage**: JSON (Phase 1) or SQLite with sqlite-vec (Phase 2)
+- **Interactive Visualization**: PyVis graph with zoom, pan, and click
 
 ## Architecture
 
@@ -27,6 +29,7 @@ User Message → Context Retrieval → LLM Response → Entity Extraction → Me
 - **Storage**: NetworkX + JSON (Phase 1), SQLite + sqlite-vec (Phase 2)
 - **Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
 - **CLI**: Rich
+- **Web UI**: Streamlit + PyVis (Phase 2)
 
 ## Installation
 
@@ -49,11 +52,19 @@ cp .env.example .env
 
 ## Usage
 
+### Console Interface (Phase 1)
+
 ```bash
 python main.py
 ```
 
-### Commands
+### Web Interface (Phase 2)
+
+```bash
+streamlit run app.py
+```
+
+### Commands (Console)
 
 | Command | Description |
 |---------|-------------|
@@ -85,15 +96,21 @@ CognitiveOS/
 │   ├── memory/
 │   │   ├── models.py       # Pydantic data models
 │   │   ├── embeddings.py   # Sentence-transformers service
-│   │   └── graph.py        # NetworkX memory graph
-│   └── agents/
-│       └── extractor.py    # Entity extraction agent
+│   │   ├── graph.py        # NetworkX memory graph
+│   │   ├── database.py     # SQLite storage (Phase 2)
+│   │   └── migrate.py      # JSON→SQLite migration (Phase 2)
+│   ├── agents/
+│   │   └── extractor.py    # Entity extraction agent
+│   └── ui/
+│       └── graph_viz.py    # PyVis visualization (Phase 2)
 ├── data/
-│   └── memory.json         # Persisted memory (auto-created)
+│   ├── memory.json         # JSON storage (Phase 1)
+│   └── memory.db           # SQLite storage (Phase 2)
 ├── tests/
 │   └── test_memory.py      # Unit tests
 ├── plans/                  # Implementation plans
 ├── main.py                 # CLI entry point
+├── app.py                  # Streamlit web app (Phase 2)
 ├── requirements.txt
 └── .env.example
 ```
@@ -128,11 +145,33 @@ CognitiveOS/
 }
 ```
 
+## Configuration
+
+Set these environment variables in your `.env` file:
+
+```bash
+# Required
+OPENAI_API_KEY=sk-...
+
+# Storage backend: "json" (Phase 1) or "sqlite" (Phase 2)
+STORAGE_BACKEND=json
+
+# Optional
+DATABASE_PATH=data/memory.db
+MEMORY_FILE=data/memory.json
+```
+
+### Migration from JSON to SQLite
+
+```bash
+python -m src.memory.migrate --json data/memory.json --db data/memory.db
+```
+
 ## Roadmap
 
 - [x] **Phase 1**: Console prototype with NetworkX
-- [ ] **Phase 2**: SQLite + sqlite-vec persistence
-- [ ] **Phase 2**: Streamlit UI with PyVis visualization
+- [x] **Phase 2**: SQLite + sqlite-vec persistence
+- [x] **Phase 2**: Streamlit UI with PyVis visualization
 - [ ] **Phase 3**: Memory consolidation ("sleep" process)
 - [ ] **Phase 3**: Local LLM support (Ollama + Llama)
 

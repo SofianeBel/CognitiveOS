@@ -1,10 +1,10 @@
-"""Memory graph manager using NetworkX."""
+"""Memory graph manager using NetworkX with optional SQLite backend."""
 
 import networkx as nx
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Literal
 import numpy as np
 from datetime import datetime
 
@@ -23,21 +23,39 @@ class MemoryGraph:
     - Node/edge storage with embeddings
     - Duplicate detection via semantic similarity
     - Context retrieval with graph traversal
-    - JSON persistence
+    - JSON or SQLite persistence
+
+    Phase 2 adds SQLite backend with sqlite-vec for vector similarity search.
     """
 
-    def __init__(self, filepath: Optional[str] = None):
+    def __init__(
+        self,
+        filepath: Optional[str] = None,
+        storage_backend: Optional[Literal["json", "sqlite"]] = None
+    ):
         """
         Initialize the memory graph.
 
         Args:
-            filepath: Path to JSON storage file
+            filepath: Path to storage file (JSON or SQLite database)
+            storage_backend: Storage backend to use ("json" or "sqlite")
         """
         self.graph = nx.DiGraph()
-        self.filepath = filepath or settings().memory_file
-        self.nodes_data: Dict[str, Node] = {}
-        self.edges_data: Dict[str, Edge] = {}
-        self._load()
+        self.storage_backend = storage_backend or settings().storage_backend
+
+        if self.storage_backend == "sqlite":
+            self.filepath = filepath or settings().database_path
+            from src.memory.database import SQLiteMemoryStore
+            self._sqlite_store = SQLiteMemoryStore(self.filepath)
+            self.nodes_data: Dict[str, Node] = {}
+            self.edges_data: Dict[str, Edge] = {}
+            self._load_from_sqlite()
+        else:
+            self.filepath = filepath or settings().memory_file
+            self._sqlite_store = None
+            self.nodes_data: Dict[str, Node] = {}
+            self.edges_data: Dict[str, Edge] = {}
+            self._load()
 
     def _load(self) -> None:
         """Load graph from JSON file if it exists."""
@@ -74,8 +92,39 @@ class MemoryGraph:
             logger.error(f"Failed to load memory file: {e}")
             raise
 
+    def _load_from_sqlite(self) -> None:
+        """Load graph from SQLite database."""
+        if not self._sqlite_store:
+            return
+
+        # Load nodes
+        for node in self._sqlite_store.get_all_nodes():
+            self.nodes_data[node.id] = node
+            self.graph.add_node(node.id, **node.model_dump())
+
+        # Load edges
+        for edge in self._sqlite_store.get_all_edges():
+            self.edges_data[edge.id] = edge
+            self.graph.add_edge(
+                edge.source,
+                edge.target,
+                id=edge.id,
+                **edge.model_dump()
+            )
+
+        logger.info(
+            f"Loaded memory from SQLite: {len(self.nodes_data)} nodes, "
+            f"{len(self.edges_data)} edges"
+        )
+
     def save(self) -> None:
-        """Persist graph to JSON file."""
+        """Persist graph to storage (JSON or SQLite)."""
+        if self.storage_backend == "sqlite":
+            # SQLite saves are handled per-operation, just log
+            logger.debug(f"Memory saved to SQLite: {self.filepath}")
+            return
+
+        # JSON persistence
         path = Path(self.filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -109,6 +158,10 @@ class MemoryGraph:
         Returns:
             Tuple of (matching_node, similarity_score) or None
         """
+        # Use SQLite store if available
+        if self._sqlite_store:
+            return self._sqlite_store.find_similar_node(name, description)
+
         if not self.nodes_data:
             return None
 
@@ -143,6 +196,14 @@ class MemoryGraph:
         Returns:
             The added node (or existing merged node if duplicate found)
         """
+        # Use SQLite store if available
+        if self._sqlite_store:
+            result = self._sqlite_store.add_node(node, check_duplicate)
+            # Keep in-memory graph in sync
+            self.nodes_data[result.id] = result
+            self.graph.add_node(result.id, **result.model_dump())
+            return result
+
         if check_duplicate:
             existing = self.find_similar_node(node.name, node.description)
             if existing:
@@ -180,6 +241,19 @@ class MemoryGraph:
         Raises:
             ValueError: If source or target node doesn't exist
         """
+        # Use SQLite store if available
+        if self._sqlite_store:
+            result = self._sqlite_store.add_edge(edge)
+            # Keep in-memory graph in sync
+            self.edges_data[result.id] = result
+            self.graph.add_edge(
+                result.source,
+                result.target,
+                id=result.id,
+                **result.model_dump()
+            )
+            return result
+
         if edge.source not in self.nodes_data:
             raise ValueError(f"Source node {edge.source} not found")
         if edge.target not in self.nodes_data:
@@ -275,26 +349,31 @@ class MemoryGraph:
 
         top_k = top_k or settings().retrieval_top_k
         threshold = settings().similarity_threshold
-        query_embedding = embedding_service.embed(query)
 
-        # Score all nodes
-        scored_nodes = []
-        for node in self.nodes_data.values():
-            if node.embedding:
-                score = embedding_service.similarity(
-                    query_embedding,
-                    np.array(node.embedding)
-                )
-                if score >= threshold:
-                    scored_nodes.append((node, score))
+        # Use SQLite store for similarity search if available
+        if self._sqlite_store:
+            scored_nodes = self._sqlite_store.search_similar(query, top_k, threshold)
+        else:
+            query_embedding = embedding_service.embed(query)
 
-        # Sort by score and take top-k
-        scored_nodes.sort(key=lambda x: x[1], reverse=True)
-        top_nodes = scored_nodes[:top_k]
+            # Score all nodes
+            scored_nodes = []
+            for node in self.nodes_data.values():
+                if node.embedding:
+                    score = embedding_service.similarity(
+                        query_embedding,
+                        np.array(node.embedding)
+                    )
+                    if score >= threshold:
+                        scored_nodes.append((node, score))
+
+            # Sort by score and take top-k
+            scored_nodes.sort(key=lambda x: x[1], reverse=True)
+            scored_nodes = scored_nodes[:top_k]
 
         # Build context with graph neighbors
         context = []
-        for node, score in top_nodes:
+        for node, score in scored_nodes:
             facts = self._get_node_facts(node)
             context.append({
                 'entity': node.name,
@@ -367,11 +446,17 @@ class MemoryGraph:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get graph statistics."""
+        if self._sqlite_store:
+            stats = self._sqlite_store.get_stats()
+            stats['storage_backend'] = 'sqlite'
+            return stats
+
         return {
             'total_nodes': len(self.nodes_data),
             'total_edges': len(self.edges_data),
             'node_types': self._count_by_label(),
-            'relation_types': self._count_by_relation()
+            'relation_types': self._count_by_relation(),
+            'storage_backend': 'json'
         }
 
     def _count_by_label(self) -> Dict[str, int]:
@@ -390,6 +475,9 @@ class MemoryGraph:
 
     def clear(self) -> None:
         """Clear all data from the graph."""
+        if self._sqlite_store:
+            self._sqlite_store.clear()
+
         self.graph.clear()
         self.nodes_data.clear()
         self.edges_data.clear()
