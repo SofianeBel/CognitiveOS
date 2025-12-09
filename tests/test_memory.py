@@ -98,6 +98,8 @@ class TestMemoryGraph:
         """Create a temporary file for memory storage."""
         fd, path = tempfile.mkstemp(suffix='.json')
         os.close(fd)
+        # Remove the empty file so MemoryGraph starts fresh
+        os.unlink(path)
         yield path
         if os.path.exists(path):
             os.unlink(path)

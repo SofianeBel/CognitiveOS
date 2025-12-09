@@ -5,6 +5,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 import logging
+import os
 
 from src.config import settings
 from src.memory.graph import MemoryGraph
@@ -44,9 +45,13 @@ class CognitiveLoop:
         self.llm = LLMFactory.create_chat_llm(temperature=0.7)
         self.graph = self._build_graph()
 
+        # Debug mode for memory retrieval visibility
+        self.debug_memory = os.getenv("DEBUG_MEMORY", "false").lower() == "true"
+
         config = settings()
         logger.info(
-            f"CognitiveLoop initialized (provider={config.llm_provider})"
+            f"CognitiveLoop initialized (provider={config.llm_provider}, "
+            f"debug_memory={self.debug_memory})"
         )
 
     def _build_graph(self) -> StateGraph:
@@ -84,6 +89,16 @@ class CognitiveLoop:
         else:
             logger.debug("No relevant memories found")
 
+        # Debug output for memory retrieval visibility
+        if self.debug_memory:
+            print(f"\n[DEBUG_MEMORY] Query: {user_input}")
+            print(f"[DEBUG_MEMORY] Retrieved {len(context_items)} items:")
+            for item in context_items:
+                relevance = item.get('relevance', 0)
+                print(f"[DEBUG_MEMORY]   - {item['entity']} ({item['type']}): {relevance:.3f}")
+            if not context_items:
+                print("[DEBUG_MEMORY]   (no memories found above threshold)")
+
         return {"context": context_str}
 
     def _generate_response(self, state: ConversationState) -> dict:
@@ -96,15 +111,26 @@ class CognitiveLoop:
         user_input = state["user_input"]
         context = state["context"]
 
-        system_content = f"""You are a helpful assistant with memory capabilities.
+        # Count retrieved memories for transparency
+        memory_count = 0
+        if context and context != "No relevant memories found.":
+            memory_count = context.count("\n- ")
 
+        system_content = f"""You are a helpful assistant with access to a personal knowledge graph.
+
+======================================================
+RELEVANT MEMORIES (Retrieved: {memory_count} items)
+======================================================
 {context}
+======================================================
 
-Use this context to personalize your responses. If the user mentions something
-you remember, acknowledge it naturally. Don't explicitly say "I remember" -
-just use the information to provide relevant and personalized responses.
+IMPORTANT INSTRUCTIONS:
+1. You MUST use the memories above when they are relevant to the user's question
+2. Reference specific facts naturally without saying "I remember"
+3. If memories contradict general knowledge, trust the memories (they are personalized)
+4. If no relevant memories exist, provide general helpful assistance
 
-Be conversational, helpful, and reference past information when relevant."""
+Now respond to the user's query:"""
 
         system_message = SystemMessage(content=system_content)
         human_message = HumanMessage(content=user_input)

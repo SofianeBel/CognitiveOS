@@ -345,6 +345,8 @@ class MemoryGraph:
         """
         Retrieve relevant context for a query using semantic search.
 
+        Searches both nodes AND edges for better relationship discovery.
+
         Args:
             query: Query string to find relevant context for
             top_k: Number of top results to return
@@ -361,6 +363,7 @@ class MemoryGraph:
         # Use SQLite store for similarity search if available
         if self._sqlite_store:
             scored_nodes = self._sqlite_store.search_similar(query, top_k, threshold)
+            scored_edges = []  # SQLite backend doesn't support edge search yet
         else:
             query_embedding = embedding_service.embed(query)
 
@@ -375,23 +378,102 @@ class MemoryGraph:
                     if score >= threshold:
                         scored_nodes.append((node, score))
 
-            # Sort by score and take top-k
-            scored_nodes.sort(key=lambda x: x[1], reverse=True)
-            scored_nodes = scored_nodes[:top_k]
+            # Score all edges (NEW: search edges for relationship queries)
+            scored_edges = []
+            for edge in self.edges_data.values():
+                if edge.embedding:
+                    score = embedding_service.similarity(
+                        query_embedding,
+                        np.array(edge.embedding)
+                    )
+                    if score >= threshold:
+                        scored_edges.append((edge, score))
 
-        # Build context with graph neighbors
+        # Log retrieval diagnostics
+        total_results = len(scored_nodes) + len(scored_edges)
+        if total_results > 0:
+            logger.info(
+                f"Retrieval: query='{query[:50]}...', "
+                f"threshold={threshold}, nodes={len(scored_nodes)}, edges={len(scored_edges)}"
+            )
+        else:
+            logger.warning(
+                f"No results above threshold {threshold} for: '{query[:50]}...'"
+            )
+            # Log best scores for debugging
+            self._log_best_scores(query_embedding if not self._sqlite_store else None, threshold)
+
+        # Combine and sort all results by score
+        all_results = [(item, score, 'node') for item, score in scored_nodes]
+        all_results += [(item, score, 'edge') for item, score in scored_edges]
+        all_results.sort(key=lambda x: x[1], reverse=True)
+
+        # Build context from top-k results
         context = []
-        for node, score in scored_nodes:
-            facts = self._get_node_facts(node)
-            context.append({
-                'entity': node.name,
-                'type': node.label,
-                'description': node.description,
-                'facts': facts,
-                'relevance': score
-            })
+        seen_node_ids = set()
+
+        for item, score, item_type in all_results[:top_k]:
+            if item_type == 'node':
+                if item.id not in seen_node_ids:
+                    seen_node_ids.add(item.id)
+                    facts = self._get_node_facts(item)
+                    context.append({
+                        'entity': item.name,
+                        'type': item.label,
+                        'description': item.description,
+                        'facts': facts,
+                        'relevance': score
+                    })
+            else:  # edge
+                # Add source node if not already present
+                source_node = self.nodes_data.get(item.source)
+                if source_node and source_node.id not in seen_node_ids:
+                    seen_node_ids.add(source_node.id)
+                    facts = self._get_node_facts(source_node)
+                    context.append({
+                        'entity': source_node.name,
+                        'type': source_node.label,
+                        'description': source_node.description,
+                        'facts': facts,
+                        'relevance': score * 0.95  # Slightly lower for edge-discovered nodes
+                    })
 
         return context
+
+    def _log_best_scores(
+        self,
+        query_embedding: Optional[np.ndarray],
+        threshold: float
+    ) -> None:
+        """Log best scores when nothing is above threshold (for debugging)."""
+        if query_embedding is None:
+            return
+
+        best_scores = []
+        for node in self.nodes_data.values():
+            if node.embedding:
+                score = embedding_service.similarity(
+                    query_embedding,
+                    np.array(node.embedding)
+                )
+                best_scores.append((node.name, score, 'node'))
+
+        for edge in self.edges_data.values():
+            if edge.embedding:
+                score = embedding_service.similarity(
+                    query_embedding,
+                    np.array(edge.embedding)
+                )
+                source_name = self.nodes_data.get(edge.source, Node(label="", name="?")).name
+                target_name = self.nodes_data.get(edge.target, Node(label="", name="?")).name
+                best_scores.append((f"{source_name}->{target_name}", score, 'edge'))
+
+        best_scores.sort(key=lambda x: x[1], reverse=True)
+        if best_scores:
+            logger.debug(
+                f"Best scores below threshold {threshold}: "
+                f"{[(name, f'{score:.3f}') for name, score, _ in best_scores[:3]]}"
+            )
 
     def _get_node_facts(self, node: Node) -> List[Dict[str, Any]]:
         """Get all facts (edges) related to a node."""

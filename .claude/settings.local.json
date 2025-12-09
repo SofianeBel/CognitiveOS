@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(hookify:writing-rules)",
+      "Bash(if not exist \".claude\" mkdir \".claude\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

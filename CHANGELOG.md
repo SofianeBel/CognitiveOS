@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-12-09
+
+### Fixed
+- **Critical**: User name retrieval now works for "je m'appelle comment?" and similar queries
+  - Added `HAS_NAME` and `IS_CALLED` relation types for personal name extraction
+  - French and English examples added to extraction prompt
+  - Name nodes now have enriched descriptions for better semantic matching
+
+### Added
+- New relation types: `HAS_NAME`, `IS_CALLED`, `RELATED_TO`
+- French language examples in extraction prompt ("Je m'appelle Marie")
+- English name extraction example ("My name is John")
+- Migration script: `python -m scripts.migrate_names` - links existing name nodes to User
+- Enrichment script: `python -m scripts.enrich_name_nodes` - improves name node embeddings
+- New test file: `tests/test_name_extraction.py` with 12 tests for name-related functionality
+
+### Changed
+- Extraction prompt now prioritizes `HAS_NAME` for personal introductions
+- Name nodes get enriched descriptions with multilingual keywords
+- HAS_NAME edges include description "Je m'appelle X" for better French query matching
+
+### Improved Similarity Scores
+After enrichment:
+- "comment je m'appelle?" → HAS_NAME edge: 0.60 (was 0.10)
+- "quel est mon nom" → Sofiane node: 0.42 (was 0.19)
+- "what is my name" → Sofiane node: 0.50 (was 0.25)
+
+## [0.3.1] - 2025-12-08
+
+### Fixed
+- **Critical**: Memory retrieval now works - lowered `SIMILARITY_THRESHOLD` from 0.7 to 0.4
+  - The all-MiniLM-L6-v2 embedding model produces similarity scores between 0.3-0.55 for relevant content
+  - Previous threshold of 0.7 blocked all retrieval, making memory appear unused
+- Edge embeddings are now searched alongside node embeddings for better relationship discovery
+- LLM prompt strengthened with explicit instructions to use retrieved context
+
+### Added
+- Debug mode for memory retrieval: set `DEBUG_MEMORY=true` to see what's being retrieved
+- Diagnostic logging in `get_context()` showing query, threshold, and result counts
+- New test file `tests/test_context_retrieval.py` for retrieval functionality
+- `_log_best_scores()` helper to debug when nothing is found above threshold
+
+### Changed
+- `get_context()` now searches both nodes and edges for comprehensive retrieval
+- System prompt for LLM now explicitly requires using retrieved memories
+- Prompt includes memory count indicator for transparency
+
+### Configuration
+- Default `SIMILARITY_THRESHOLD` changed from 0.7 to 0.4
+- New environment variable: `DEBUG_MEMORY` (default: false) - enables verbose memory retrieval output
+
 ## [0.3.0] - 2025-12-08
 
 ### Added
@@ -73,7 +124,9 @@ New environment variables:
 ### Relation Types
 - KNOWS, LIKES, DISLIKES, WORKS_AT, LIVES_IN, OWNS, LEARNED, CREATED, MEMBER_OF, HAS_PROPERTY, RELATED_TO
 
-[Unreleased]: https://github.com/yourusername/CognitiveOS/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/yourusername/CognitiveOS/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/yourusername/CognitiveOS/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/yourusername/CognitiveOS/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/yourusername/CognitiveOS/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yourusername/CognitiveOS/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/yourusername/CognitiveOS/releases/tag/v0.1.0

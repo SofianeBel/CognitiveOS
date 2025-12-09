@@ -28,6 +28,8 @@ Your job is to analyze user messages and extract:
 - Organization: Companies, schools, groups
 
 ## Relation Types
+- HAS_NAME: User's personal name (CRITICAL: use when user says "my name is X", "I'm called X", "je m'appelle X")
+- IS_CALLED: Nickname or alternative name
 - KNOWS: Personal relationship with someone
 - LIKES: Positive preference
 - DISLIKES: Negative preference
@@ -38,6 +40,7 @@ Your job is to analyze user messages and extract:
 - CREATED: Made something
 - MEMBER_OF: Group membership
 - HAS_PROPERTY: Attribute of something
+- RELATED_TO: General relationship between entities
 
 ## Rules
 1. Only extract facts that are explicitly stated or strongly implied
@@ -64,6 +67,38 @@ Your job is to analyze user messages and extract:
   "reasoning": "Extracted work relationship and friendship based on explicit mentions"
 }}
 
+## Example Input (Personal name - IMPORTANT)
+"Je m'appelle Marie"
+
+## Example Output (Personal name)
+{{
+  "entities": [
+    {{"label": "Person", "name": "User", "description": "The user of this system"}},
+    {{"label": "Person", "name": "Marie", "description": "User's personal name"}}
+  ],
+  "relations": [
+    {{"source": "User", "target": "Marie", "relation": "HAS_NAME", "description": "User's given name is Marie"}}
+  ],
+  "reasoning": "User introduced themselves with their name - this is a HAS_NAME relationship"
+}}
+
+## Example Input (English name)
+"My name is John and I'm a software developer"
+
+## Example Output (English name)
+{{
+  "entities": [
+    {{"label": "Person", "name": "User", "description": "The user of this system"}},
+    {{"label": "Person", "name": "John", "description": "User's personal name"}},
+    {{"label": "Skill", "name": "Software Development", "description": "User's profession"}}
+  ],
+  "relations": [
+    {{"source": "User", "target": "John", "relation": "HAS_NAME", "description": "User's given name"}},
+    {{"source": "User", "target": "Software Development", "relation": "LEARNED", "description": "User's profession"}}
+  ],
+  "reasoning": "Extracted user's name and profession from introduction"
+}}
+
 ## Example Input (No facts)
 "Hello! How are you today?"
 
@@ -87,7 +122,7 @@ class ExtractedRelation(BaseModel):
     """An extracted relation between entities."""
     source: str = Field(description="Name of the source entity")
     target: str = Field(description="Name of the target entity")
-    relation: str = Field(description="Relation type: KNOWS, LIKES, DISLIKES, WORKS_AT, LIVES_IN, OWNS, LEARNED, CREATED, MEMBER_OF, HAS_PROPERTY")
+    relation: str = Field(description="Relation type: HAS_NAME, IS_CALLED, KNOWS, LIKES, DISLIKES, WORKS_AT, LIVES_IN, OWNS, LEARNED, CREATED, MEMBER_OF, HAS_PROPERTY, RELATED_TO")
     description: Optional[str] = Field(None, description="Brief description of the relation")
 
 

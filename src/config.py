@@ -53,7 +53,7 @@ class Settings(BaseSettings):
         validation_alias="RETRIEVAL_TOP_K"
     )
     similarity_threshold: float = Field(
-        default=0.7,
+        default=0.4,
         validation_alias="SIMILARITY_THRESHOLD"
     )
     duplicate_threshold: float = Field(
